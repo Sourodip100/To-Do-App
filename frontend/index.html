@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Todo App</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 40px auto; background: #f7f7f8; }
+  h1 { font-size: 1.5rem; }
+  input[type=text], input[type=password] { width: 100%; padding: 8px; margin-bottom: 8px; box-sizing: border-box; }
+  form { display: flex; gap: 8px; margin-bottom: 16px; }
+  form.column { flex-direction: column; }
+  button { padding: 8px 12px; cursor: pointer; }
+  ul { list-style: none; padding: 0; }
+  li { display: flex; align-items: center; gap: 8px; background: white; padding: 10px; margin-bottom: 6px; border-radius: 6px; }
+  li.completed span { text-decoration: line-through; color: #999; }
+  li span { flex: 1; }
+  .delete-btn { background: #e5484d; color: white; border: none; border-radius: 4px; }
+  #app { display: none; }
+  #logout-btn { float: right; }
+  small { color: #666; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+  .tabs button { flex: 1; background: #eee; border: none; border-radius: 4px; padding: 8px; }
+  .tabs button.active { background: #333; color: white; }
+  .auth-form { display: none; }
+  .auth-form.active { display: flex; }
+</style>
+</head>
+<body>
+  <h1>Todo App</h1>
+
+  <div id="login-view">
+    <div class="tabs">
+      <button id="tab-login" class="active" type="button">Log in</button>
+      <button id="tab-register" type="button">Register</button>
+    </div>
+
+    <form id="login-form" class="column auth-form active">
+      <input id="login-username" type="text" placeholder="Username" required>
+      <input id="login-password" type="password" placeholder="Password" required>
+      <button type="submit">Log in</button>
+    </form>
+
+    <form id="register-form" class="column auth-form">
+      <input id="register-username" type="text" placeholder="Choose a username (min 3 chars)" required>
+      <input id="register-password" type="password" placeholder="Choose a password (min 6 chars)" required>
+      <button type="submit">Create account</button>
+    </form>
+
+    <div id="auth-error" style="color:#e5484d;"></div>
+  </div>
+
+  <div id="app">
+    <button id="logout-btn">Log out</button>
+    <form id="todo-form">
+      <input id="todo-input" type="text" placeholder="What needs to be done?" required>
+      <button type="submit">Add</button>
+    </form>
+    <ul id="todo-list"></ul>
+  </div>
+
+<script>
+const API_BASE = "https://jowj6focvj.execute-api.ap-south-1.amazonaws.com/Prod";
+function getToken() { return localStorage.getItem('todoToken'); }
+
+function showApp() {
+  document.getElementById('login-view').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  loadTodos();
+}
+
+if (getToken()) showApp();
+
+// --- Tab switching between Login and Register ---
+const tabLogin = document.getElementById('tab-login');
+const tabRegister = document.getElementById('tab-register');
+const loginForm = document.getElementById('login-form');
+const registerForm = document.getElementById('register-form');
+const authError = document.getElementById('auth-error');
+
+tabLogin.addEventListener('click', () => {
+  tabLogin.classList.add('active');
+  tabRegister.classList.remove('active');
+  loginForm.classList.add('active');
+  registerForm.classList.remove('active');
+  authError.textContent = '';
+});
+
+tabRegister.addEventListener('click', () => {
+  tabRegister.classList.add('active');
+  tabLogin.classList.remove('active');
+  registerForm.classList.add('active');
+  loginForm.classList.remove('active');
+  authError.textContent = '';
+});
+
+// --- Login ---
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const username = document.getElementById('login-username').value;
+  const password = document.getElementById('login-password').value;
+  authError.textContent = '';
+
+  try {
+    const res = await fetch(`${API_BASE}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      authError.textContent = err.error || 'Login failed';
+      return;
+    }
+    const { token } = await res.json();
+    localStorage.setItem('todoToken', token);
+    showApp();
+  } catch (err) {
+    authError.textContent = 'Could not connect to the server.';
+  }
+});
+
+// --- Register ---
+registerForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const username = document.getElementById('register-username').value;
+  const password = document.getElementById('register-password').value;
+  authError.textContent = '';
+
+  try {
+    const res = await fetch(`${API_BASE}/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      authError.textContent = err.error || 'Registration failed';
+      return;
+    }
+    // Registration auto-logs in and returns a token, same as login.
+    const { token } = await res.json();
+    localStorage.setItem('todoToken', token);
+    showApp();
+  } catch (err) {
+    authError.textContent = 'Could not connect to the server.';
+  }
+});
+
+document.getElementById('logout-btn').addEventListener('click', () => {
+  localStorage.removeItem('todoToken');
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-view').style.display = 'block';
+});
+
+function authHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${getToken()}`,
+  };
+}
+
+async function loadTodos() {
+  const res = await fetch(`${API_BASE}/todos`, { headers: authHeaders() });
+  if (res.status === 401) return handleUnauthorized();
+  const todos = await res.json();
+  const list = document.getElementById('todo-list');
+  list.innerHTML = '';
+  todos.forEach(todo => {
+    const li = document.createElement('li');
+    if (todo.completed) li.classList.add('completed');
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = todo.completed;
+    checkbox.addEventListener('change', () => toggleTodo(todo.id, checkbox.checked));
+
+    const span = document.createElement('span');
+    span.textContent = todo.title;
+
+    const delBtn = document.createElement('button');
+    delBtn.textContent = 'Delete';
+    delBtn.className = 'delete-btn';
+    delBtn.addEventListener('click', () => deleteTodo(todo.id));
+
+    li.append(checkbox, span, delBtn);
+    list.appendChild(li);
+  });
+}
+
+function handleUnauthorized() {
+  localStorage.removeItem('todoToken');
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-view').style.display = 'block';
+  authError.textContent = 'Session expired, please log in again.';
+}
+
+async function addTodo(title) {
+  const res = await fetch(`${API_BASE}/todos`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ title }),
+  });
+  if (res.status === 401) return handleUnauthorized();
+  loadTodos();
+}
+
+async function toggleTodo(id, completed) {
+  const res = await fetch(`${API_BASE}/todos/${id}`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify({ completed }),
+  });
+  if (res.status === 401) return handleUnauthorized();
+  loadTodos();
+}
+
+async function deleteTodo(id) {
+  const res = await fetch(`${API_BASE}/todos/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (res.status === 401) return handleUnauthorized();
+  loadTodos();
+}
+
+document.getElementById('todo-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = document.getElementById('todo-input');
+  if (!input.value.trim()) return;
+  addTodo(input.value.trim());
+  input.value = '';
+});
+</script>
+</body>
+</html>

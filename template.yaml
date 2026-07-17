@@ -1,0 +1,209 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Serverless Todo App with user registration/login (Node.js Lambda + API Gateway + Lambda Authorizer + DynamoDB)
+
+Parameters:
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    Description: Secret used to sign and verify JWTs (pick any long random string)
+
+Globals:
+  Function:
+    Timeout: 10
+    MemorySize: 128
+    Runtime: nodejs20.x
+    CodeUri: ./
+
+Resources:
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: UsersTable
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: username
+          AttributeType: S
+      KeySchema:
+        - AttributeName: username
+          KeyType: HASH
+
+  # NOTE: this table's key schema now includes userId. If you previously
+  # deployed the single-user version, delete the old TodosTable (or the
+  # whole stack) before deploying this update - CloudFormation can't
+  # change a table's primary key in place, and the fixed TableName below
+  # will collide with the existing table during a replacement attempt.
+  TodosTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: TodosTable
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: id
+          KeyType: RANGE
+
+  TodoApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
+      Auth:
+        DefaultAuthorizer: JwtAuthorizer
+        Authorizers:
+          JwtAuthorizer:
+            FunctionArn: !GetAtt AuthorizerFunction.Arn
+            # Header (singular) is what makes this a TOKEN-type authorizer,
+            # matching authorizer.js which reads event.authorizationToken.
+            # Using "Headers" (plural) here would create a REQUEST-type
+            # authorizer instead, and authorizer.js would never see the
+            # token - that was a bug in the previous version of this file.
+            Identity:
+              Header: Authorization
+              ReauthorizeEvery: 300
+
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: authorizer.handler
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+
+  AuthorizerInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref AuthorizerFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TodoApi}/*"
+
+  RegisterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: register.handler
+      Environment:
+        Variables:
+          USERS_TABLE: !Ref UsersTable
+          JWT_SECRET: !Ref JwtSecret
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+      Events:
+        Register:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TodoApi
+            Path: /register
+            Method: POST
+            Auth:
+              Authorizer: NONE
+        RegisterOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TodoApi
+            Path: /register
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+
+  LoginFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: auth.handler
+      Environment:
+        Variables:
+          USERS_TABLE: !Ref UsersTable
+          JWT_SECRET: !Ref JwtSecret
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref UsersTable
+      Events:
+        Login:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TodoApi
+            Path: /login
+            Method: POST
+            Auth:
+              Authorizer: NONE
+        LoginOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TodoApi
+            Path: /login
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+
+  TodoFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: todos.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TodosTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TodosTable
+      Events:
+        ListTodos:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TodoApi
+            Path: /todos
+            Method: GET
+        CreateTodo:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TodoApi
+            Path: /todos
+            Method: POST
+        OptionsTodos:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TodoApi
+            Path: /todos
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+        GetTodo:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TodoApi
+            Path: /todos/{id}
+            Method: GET
+        UpdateTodo:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TodoApi
+            Path: /todos/{id}
+            Method: PUT
+        DeleteTodo:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TodoApi
+            Path: /todos/{id}
+            Method: DELETE
+        OptionsTodoId:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TodoApi
+            Path: /todos/{id}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+
+Outputs:
+  ApiUrl:
+    Description: Base URL for the Todo API
+    Value: !Sub "https://${TodoApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
