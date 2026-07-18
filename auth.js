@@ -22,32 +22,42 @@ function response(statusCode, body) {
 }
 
 exports.handler = async (event) => {
-  if (event.httpMethod === "OPTIONS") return response(200);
-
-  let body;
   try {
-    body = JSON.parse(event.body || "{}");
-  } catch {
-    return response(400, { error: "invalid JSON body" });
+    if (event.httpMethod === "OPTIONS") return response(200);
+
+    if (!process.env.JWT_SECRET) {
+      console.error("JWT_SECRET environment variable is not set");
+      return response(500, { error: "server misconfigured: missing JWT secret" });
+    }
+
+    let body;
+    try {
+      body = JSON.parse(event.body || "{}");
+    } catch {
+      return response(400, { error: "invalid JSON body" });
+    }
+
+    const { username, password } = body;
+    if (!username || !password) {
+      return response(400, { error: "username and password are required" });
+    }
+
+    const result = await ddb.send(
+      new GetCommand({ TableName: USERS_TABLE, Key: { username } })
+    );
+    const user = result.Item;
+
+    if (!user || !verifyPassword(password, user.passwordHash)) {
+      return response(401, { error: "invalid credentials" });
+    }
+
+    const token = jwt.sign({ sub: user.userId }, process.env.JWT_SECRET, {
+      expiresIn: "1h",
+    });
+
+    return response(200, { token, expiresIn: 3600 });
+  } catch (err) {
+    console.error("Unhandled error in login handler:", err);
+    return response(500, { error: "internal server error" });
   }
-
-  const { username, password } = body;
-  if (!username || !password) {
-    return response(400, { error: "username and password are required" });
-  }
-
-  const result = await ddb.send(
-    new GetCommand({ TableName: USERS_TABLE, Key: { username } })
-  );
-  const user = result.Item;
-
-  if (!user || !verifyPassword(password, user.passwordHash)) {
-    return response(401, { error: "invalid credentials" });
-  }
-
-  const token = jwt.sign({ sub: user.userId }, process.env.JWT_SECRET, {
-    expiresIn: "1h",
-  });
-
-  return response(200, { token, expiresIn: 3600 });
 };
