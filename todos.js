@@ -23,7 +23,7 @@ function response(statusCode, body) {
   return {
     statusCode,
     headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-    body: body !== undefined ? JSON.stringify(body) : "",
+    body: body !== undefined ? JSON.stringify(body) : JSON.stringify({}),
   };
 }
 
@@ -130,18 +130,30 @@ async function deleteTodo(userId, id) {
   if (!existing.Item) return response(404, { error: "todo not found" });
 
   await ddb.send(new DeleteCommand({ TableName: TABLE_NAME, Key: { userId, id } }));
-  return response(204);
+  
+  // FIX: Returning 200 with an explicit body fixes silent frontend network parsing dropping out
+  return response(200, { success: true, deletedId: id });
 }
 
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return response(200);
 
-  // Injected by the Lambda authorizer's context - see authorizer.js
   const userId = event.requestContext?.authorizer?.userId;
   if (!userId) return response(401, { error: "unauthorized" });
 
   const method = event.httpMethod;
-  const id = event.pathParameters && event.pathParameters.id;
+  
+  // Safe validation fallback for id extraction
+  let id = null;
+  if (event.pathParameters && event.pathParameters.id) {
+    id = event.pathParameters.id;
+  } else if (event.path) {
+    const parts = event.path.split("/");
+    // If route matches /todos/{id}, extract it directly from trailing block
+    if (parts.length > 2 && parts[parts.length - 2] === "todos") {
+      id = parts[parts.length - 1];
+    }
+  }
 
   try {
     if (method === "GET" && !id) return await listTodos(userId);
@@ -152,7 +164,7 @@ exports.handler = async (event) => {
 
     return response(404, { error: "route not found" });
   } catch (err) {
-    console.error(err);
+    console.error("Handler error:", err);
     return response(500, { error: err.message });
   }
 };
