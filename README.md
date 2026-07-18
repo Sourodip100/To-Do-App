@@ -121,22 +121,26 @@ curl -i -X POST "$API/register" \
 sam delete
 ```
 
-## Troubleshooting: OPTIONS request returns 502
+## Troubleshooting: OPTIONS preflight fails
 
-If a browser preflight (`OPTIONS /register`, `OPTIONS /todos`, etc.) comes
-back as `502 Bad Gateway`, it's caused by defining CORS two conflicting
-ways at once: the API's `Cors:` property (which auto-generates an
-`OPTIONS` mock method on every route) **and** a manual `OPTIONS` event
-routed to the Lambda for the same path. Those two integrations collide.
+**502 Bad Gateway on OPTIONS** — caused by defining CORS two conflicting
+ways at once: the `Cors:` property (which auto-generates an `OPTIONS`
+mock route on every path) *and* a manual `OPTIONS` event pointed at a
+Lambda for the same path. This template only uses `Cors:` — don't add
+per-route `OPTIONS` events back in.
 
-This template only uses the `Cors:` property — don't add per-route
-`OPTIONS` events back in. If you edit the template and see this error,
-check that you haven't reintroduced a manual `OPTIONS` event alongside
-the `Cors:` block.
+**401 Unauthorized on OPTIONS** — by default, SAM attaches the API's
+`DefaultAuthorizer` to the auto-generated CORS preflight route too.
+Browsers never send the `Authorization` header on a preflight request
+(only in `Access-Control-Request-Headers`, listing what the *real*
+request will send), so the authorizer rejects it with 401 before the
+real request ever runs. The fix is `AddDefaultAuthorizerToCorsPreflight:
+false` under the API's `Auth:` block, which is already set in this
+template — if you see this error, check that setting hasn't been removed.
 
-If you deployed a version with the conflict, redeploy after removing the
-`OPTIONS` events (`sam build && sam deploy`) — no table changes needed
-this time, this is an API Gateway config fix only.
+If you deployed a version with either problem, redeploy after the fix
+(`sam build && sam deploy`) — this is an API Gateway config change only,
+no table changes, no data loss.
 
 ## Ideas to extend this for deeper learning
 - Swap the JWT approach for Amazon Cognito to compare a managed auth service against rolling your own.
