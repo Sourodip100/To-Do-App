@@ -77,28 +77,26 @@ Resources:
               Header: Authorization
               ReauthorizeEvery: 300
 
-  # Without these, when the Lambda authorizer denies a request (expired or
-  # missing token), API Gateway returns its own 401/403 error directly -
-  # bypassing the Todos Lambda entirely - and that default error response
-  # has no CORS headers. Browsers then block it as a CORS violation and
-  # fetch() throws instead of resolving, which looks like "nothing happens"
-  # in the UI even though curl (which ignores CORS) works fine.
-  UnauthorizedGatewayResponse:
+  # Covers EVERY error response API Gateway generates on its own, before
+  # ever reaching a Lambda's own code - including authorizer denials,
+  # authorizer invocation failures, and generic internal errors. Without
+  # this, any of those come back with no CORS headers, the browser blocks
+  # them, and fetch() throws ("Could not connect to the server") even
+  # though curl (which ignores CORS) sees the request go through fine.
+  Default4xxGatewayResponse:
     Type: AWS::ApiGateway::GatewayResponse
     Properties:
-      ResponseType: UNAUTHORIZED
+      ResponseType: DEFAULT_4XX
       RestApiId: !Ref TodoApi
-      StatusCode: '401'
       ResponseParameters:
         gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
         gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
 
-  AccessDeniedGatewayResponse:
+  Default5xxGatewayResponse:
     Type: AWS::ApiGateway::GatewayResponse
     Properties:
-      ResponseType: ACCESS_DENIED
+      ResponseType: DEFAULT_5XX
       RestApiId: !Ref TodoApi
-      StatusCode: '403'
       ResponseParameters:
         gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
         gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
