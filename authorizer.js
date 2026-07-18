@@ -22,20 +22,37 @@ exports.handler = async (event) => {
     throw new Error("Unauthorized");
   }
 
+  // try {
+  //   const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  //   // return generatePolicy(decoded.sub, "Allow", event.methodArn, {
+  //   //   userId: decoded.sub,
+  //   // });
+  //   const arnParts = event.methodArn.split("/");
+  //   const resourceArn = arnParts.slice(0, 2).join("/") + "/*/*";
+
+  //   return generatePolicy(decoded.sub, "Allow", resourceArn, {
+  //     userId: decoded.sub,
+  //   });
+  // } catch (err) {
+  //   // Logged for CloudWatch debugging - API Gateway only sees "Unauthorized"
+  //   // either way, since throwing is what makes it return 401.
+  //   console.error("JWT verification failed:", err.message);
+  //   throw new Error("Unauthorized");
+  // }
+
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    // return generatePolicy(decoded.sub, "Allow", event.methodArn, {
-    //   userId: decoded.sub,
-    // });
-    const arnParts = event.methodArn.split("/");
-    const resourceArn = arnParts.slice(0, 2).join("/") + "/*/*";
+    
+    // Clear out method and path specific blocks to generate a universal stage ARN wildcard
+    const stageIndex = event.methodArn.indexOf('/');
+    const apiArn = event.methodArn.substring(0, stageIndex);
+    const resourceArn = `${apiArn}/*`;
 
     return generatePolicy(decoded.sub, "Allow", resourceArn, {
       userId: decoded.sub,
     });
   } catch (err) {
-    // Logged for CloudWatch debugging - API Gateway only sees "Unauthorized"
-    // either way, since throwing is what makes it return 401.
+    // Logged for CloudWatch debugging
     console.error("JWT verification failed:", err.message);
     throw new Error("Unauthorized");
   }
