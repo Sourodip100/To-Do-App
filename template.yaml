@@ -59,6 +59,7 @@ Resources:
         AllowOrigin: "'*'"
       Auth:
         DefaultAuthorizer: JwtAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: false
         Authorizers:
           JwtAuthorizer:
             FunctionArn: !GetAtt AuthorizerFunction.Arn
