@@ -28,6 +28,9 @@ exports.handler = async (event) => {
       userId: decoded.sub,
     });
   } catch (err) {
+    // Logged for CloudWatch debugging - API Gateway only sees "Unauthorized"
+    // either way, since throwing is what makes it return 401.
+    console.error("JWT verification failed:", err.message);
     throw new Error("Unauthorized");
   }
 };
