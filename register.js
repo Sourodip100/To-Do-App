@@ -23,49 +23,64 @@ function response(statusCode, body) {
 }
 
 exports.handler = async (event) => {
-  if (event.httpMethod === "OPTIONS") return response(200);
-
-  let body;
+  // Everything is wrapped in one try/catch: any uncaught error inside a
+  // Lambda proxy integration becomes an opaque 502 to the browser with no
+  // detail. Catching it here lets us log the real cause to CloudWatch and
+  // return a proper JSON error instead.
   try {
-    body = JSON.parse(event.body || "{}");
-  } catch {
-    return response(400, { error: "invalid JSON body" });
-  }
+    if (event.httpMethod === "OPTIONS") return response(200);
 
-  const username = (body.username || "").trim();
-  const password = body.password || "";
-
-  if (username.length < 3) {
-    return response(400, { error: "username must be at least 3 characters" });
-  }
-  if (password.length < 6) {
-    return response(400, { error: "password must be at least 6 characters" });
-  }
-
-  const userId = randomUUID();
-  const passwordHash = hashPassword(password);
-
-  try {
-    await ddb.send(
-      new PutCommand({
-        TableName: USERS_TABLE,
-        Item: { username, passwordHash, userId, createdAt: Date.now() },
-        // Prevents a race where two requests register the same username
-        // at the same time - the write fails instead of overwriting.
-        ConditionExpression: "attribute_not_exists(username)",
-      })
-    );
-  } catch (err) {
-    if (err.name === "ConditionalCheckFailedException") {
-      return response(409, { error: "username already taken" });
+    if (!process.env.JWT_SECRET) {
+      console.error("JWT_SECRET environment variable is not set");
+      return response(500, { error: "server misconfigured: missing JWT secret" });
     }
-    return response(500, { error: err.message });
+
+    let body;
+    try {
+      body = JSON.parse(event.body || "{}");
+    } catch {
+      return response(400, { error: "invalid JSON body" });
+    }
+
+    const username = (body.username || "").trim();
+    const password = body.password || "";
+
+    if (username.length < 3) {
+      return response(400, { error: "username must be at least 3 characters" });
+    }
+    if (password.length < 6) {
+      return response(400, { error: "password must be at least 6 characters" });
+    }
+
+    const userId = randomUUID();
+    const passwordHash = hashPassword(password);
+
+    try {
+      await ddb.send(
+        new PutCommand({
+          TableName: USERS_TABLE,
+          Item: { username, passwordHash, userId, createdAt: Date.now() },
+          // Prevents a race where two requests register the same username
+          // at the same time - the write fails instead of overwriting.
+          ConditionExpression: "attribute_not_exists(username)",
+        })
+      );
+    } catch (err) {
+      if (err.name === "ConditionalCheckFailedException") {
+        return response(409, { error: "username already taken" });
+      }
+      console.error("DynamoDB write failed:", err);
+      return response(500, { error: err.message });
+    }
+
+    // Auto-login on successful registration for a smoother UX.
+    const token = jwt.sign({ sub: userId }, process.env.JWT_SECRET, {
+      expiresIn: "1h",
+    });
+
+    return response(201, { token, expiresIn: 3600 });
+  } catch (err) {
+    console.error("Unhandled error in register handler:", err);
+    return response(500, { error: "internal server error" });
   }
-
-  // Auto-login on successful registration for a smoother UX.
-  const token = jwt.sign({ sub: userId }, process.env.JWT_SECRET, {
-    expiresIn: "1h",
-  });
-
-  return response(201, { token, expiresIn: 3600 });
 };
