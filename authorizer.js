@@ -24,7 +24,13 @@ exports.handler = async (event) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    return generatePolicy(decoded.sub, "Allow", event.methodArn, {
+    // return generatePolicy(decoded.sub, "Allow", event.methodArn, {
+    //   userId: decoded.sub,
+    // });
+    const arnParts = event.methodArn.split("/");
+    const resourceArn = arnParts.slice(0, 2).join("/") + "/*/*";
+
+    return generatePolicy(decoded.sub, "Allow", resourceArn, {
       userId: decoded.sub,
     });
   } catch (err) {
