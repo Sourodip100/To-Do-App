@@ -24,21 +24,27 @@ exports.handler = async (event) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    // return generatePolicy(decoded.sub, "Allow", event.methodArn, {
-    //   userId: decoded.sub,
-    // });
-    const arnParts = event.methodArn.split("/");
-    const resourceArn = arnParts.slice(0, 2).join("/") + "/*/*";
+
+    // Authorizer decisions are cached per-token for ReauthorizeEvery
+    // seconds (see template.yaml). If the returned policy only allowed
+    // the *specific* route being called right now, a later call to a
+    // different route/method with the same still-cached token would be
+    // wrongly denied. Scoping the Resource to the whole API+stage avoids
+    // that: one Allow decision covers every route until the cache expires.
+    const stageIndex = event.methodArn.indexOf("/");
+    const apiArn = event.methodArn.substring(0, stageIndex);
+    const resourceArn = `${apiArn}/*`;
 
     return generatePolicy(decoded.sub, "Allow", resourceArn, {
       userId: decoded.sub,
     });
   } catch (err) {
-    // Logged for CloudWatch debugging - API Gateway only sees "Unauthorized"
-    // either way, since throwing is what makes it return 401.
+    // Logged for CloudWatch debugging - API Gateway only sees
+    // "Unauthorized" either way, since throwing is what makes it return 401.
     console.error("JWT verification failed:", err.message);
     throw new Error("Unauthorized");
   }
+};
 
 function generatePolicy(principalId, effect, resource, context) {
   return {
@@ -57,4 +63,4 @@ function generatePolicy(principalId, effect, resource, context) {
     // event.requestContext.authorizer.userId in the downstream Lambda.
     context,
   };
-};
+}
