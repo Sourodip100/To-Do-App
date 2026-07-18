@@ -59,6 +59,12 @@ Resources:
         AllowOrigin: "'*'"
       Auth:
         DefaultAuthorizer: JwtAuthorizer
+        # Without this, SAM attaches the DefaultAuthorizer to the
+        # auto-generated CORS preflight OPTIONS route too. Browsers never
+        # send the Authorization header on a preflight request, so the
+        # authorizer would reject it with 401 before the real request
+        # (register/login/todos) ever gets a chance to run.
+        AddDefaultAuthorizerToCorsPreflight: false
         Authorizers:
           JwtAuthorizer:
             FunctionArn: !GetAtt AuthorizerFunction.Arn
