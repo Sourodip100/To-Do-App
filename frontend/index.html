@@ -51,6 +51,7 @@
 
   <div id="app">
     <button id="logout-btn">Log out</button>
+    <div id="app-error" style="color:#e5484d; margin-bottom: 8px;"></div>
     <form id="todo-form">
       <input id="todo-input" type="text" placeholder="What needs to be done?" required>
       <button type="submit">Add</button>
@@ -59,7 +60,7 @@
   </div>
 
 <script>
-const API_BASE = "https://jowj6focvj.execute-api.ap-south-1.amazonaws.com/Prod";
+const API_BASE = "https://6anqdprz6k.execute-api.ap-south-1.amazonaws.com/Prod";
 function getToken() { return localStorage.getItem('todoToken'); }
 
 function showApp() {
@@ -160,31 +161,46 @@ function authHeaders() {
 }
 
 async function loadTodos() {
-  const res = await fetch(`${API_BASE}/todos`, { headers: authHeaders() });
-  if (res.status === 401) return handleUnauthorized();
-  const todos = await res.json();
-  const list = document.getElementById('todo-list');
-  list.innerHTML = '';
-  todos.forEach(todo => {
-    const li = document.createElement('li');
-    if (todo.completed) li.classList.add('completed');
+  try {
+    const res = await fetch(`${API_BASE}/todos`, { headers: authHeaders() });
+    if (res.status === 401) return handleUnauthorized();
+    if (!res.ok) return showAppError(`Could not load todos (status ${res.status}).`);
 
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = todo.completed;
-    checkbox.addEventListener('change', () => toggleTodo(todo.id, checkbox.checked));
+    const todos = await res.json();
+    showAppError('');
+    const list = document.getElementById('todo-list');
+    list.innerHTML = '';
+    todos.forEach(todo => {
+      const li = document.createElement('li');
+      if (todo.completed) li.classList.add('completed');
 
-    const span = document.createElement('span');
-    span.textContent = todo.title;
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = todo.completed;
+      checkbox.addEventListener('change', () => toggleTodo(todo.id, checkbox.checked));
 
-    const delBtn = document.createElement('button');
-    delBtn.textContent = 'Delete';
-    delBtn.className = 'delete-btn';
-    delBtn.addEventListener('click', () => deleteTodo(todo.id));
+      const span = document.createElement('span');
+      span.textContent = todo.title;
 
-    li.append(checkbox, span, delBtn);
-    list.appendChild(li);
-  });
+      const delBtn = document.createElement('button');
+      delBtn.textContent = 'Delete';
+      delBtn.className = 'delete-btn';
+      delBtn.addEventListener('click', () => deleteTodo(todo.id));
+
+      li.append(checkbox, span, delBtn);
+      list.appendChild(li);
+    });
+  } catch (err) {
+    // A network/CORS-level failure lands here (fetch rejects instead of
+    // resolving) - show it instead of doing nothing silently.
+    showAppError('Could not connect to the server. Check the console for details.');
+    console.error('loadTodos failed:', err);
+  }
+}
+
+function showAppError(message) {
+  const el = document.getElementById('app-error');
+  if (el) el.textContent = message;
 }
 
 function handleUnauthorized() {
@@ -195,32 +211,50 @@ function handleUnauthorized() {
 }
 
 async function addTodo(title) {
-  const res = await fetch(`${API_BASE}/todos`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({ title }),
-  });
-  if (res.status === 401) return handleUnauthorized();
-  loadTodos();
+  try {
+    const res = await fetch(`${API_BASE}/todos`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ title }),
+    });
+    if (res.status === 401) return handleUnauthorized();
+    if (!res.ok) return showAppError(`Could not add todo (status ${res.status}).`);
+    loadTodos();
+  } catch (err) {
+    showAppError('Could not connect to the server. Check the console for details.');
+    console.error('addTodo failed:', err);
+  }
 }
 
 async function toggleTodo(id, completed) {
-  const res = await fetch(`${API_BASE}/todos/${id}`, {
-    method: 'PUT',
-    headers: authHeaders(),
-    body: JSON.stringify({ completed }),
-  });
-  if (res.status === 401) return handleUnauthorized();
-  loadTodos();
+  try {
+    const res = await fetch(`${API_BASE}/todos/${id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({ completed }),
+    });
+    if (res.status === 401) return handleUnauthorized();
+    if (!res.ok) return showAppError(`Could not update todo (status ${res.status}).`);
+    loadTodos();
+  } catch (err) {
+    showAppError('Could not connect to the server. Check the console for details.');
+    console.error('toggleTodo failed:', err);
+  }
 }
 
 async function deleteTodo(id) {
-  const res = await fetch(`${API_BASE}/todos/${id}`, {
-    method: 'DELETE',
-    headers: authHeaders(),
-  });
-  if (res.status === 401) return handleUnauthorized();
-  loadTodos();
+  try {
+    const res = await fetch(`${API_BASE}/todos/${id}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    if (res.status === 401) return handleUnauthorized();
+    if (!res.ok) return showAppError(`Could not delete todo (status ${res.status}).`);
+    loadTodos();
+  } catch (err) {
+    showAppError('Could not connect to the server. Check the console for details.');
+    console.error('deleteTodo failed:', err);
+  }
 }
 
 document.getElementById('todo-form').addEventListener('submit', (e) => {
