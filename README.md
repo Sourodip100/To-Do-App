@@ -142,6 +142,24 @@ If you deployed a version with either problem, redeploy after the fix
 (`sam build && sam deploy`) — this is an API Gateway config change only,
 no table changes, no data loss.
 
+**"Could not connect to the server" on /todos calls, but curl works fine**
+— this is a CORS-on-error-response issue, one level broader than the two
+above. Any error API Gateway generates *itself* (not from your Lambda
+code) — including authorizer invocation failures, not just clean denials
+— has no CORS headers by default. The browser blocks it and `fetch()`
+throws instead of resolving, which looks like nothing happened. `curl`
+ignores CORS entirely, so the same call there looks fine. The fix is the
+`Default4xxGatewayResponse` / `Default5xxGatewayResponse` resources in
+`template.yaml`, which add CORS headers to every API-Gateway-generated
+error response, not just the specific ones (`UNAUTHORIZED`,
+`ACCESS_DENIED`) — those don't cover every failure mode on their own.
+
+If this still doesn't clear up after redeploying, check CloudWatch logs
+for both the `AuthorizerFunction` and `TodoFunction` right after a failed
+request — that will show the real underlying error (e.g. an expired or
+malformed token, a missing DynamoDB permission, etc.) rather than the
+generic browser-side symptom.
+
 ## Ideas to extend this for deeper learning
 - Swap the JWT approach for Amazon Cognito to compare a managed auth service against rolling your own.
 - Add password reset (e.g. via a one-time emailed token — needs SES).
