@@ -1,0 +1,18 @@
+{
+  "name": "todo",
+  "version": "1.0.0",
+  "description": "A serverless microservice architecture: API Gateway as the entry point, a custom **Lambda authorizer** guarding routes, and independent Lambda functions each doing one job — now with real multi-user accounts instead of a single hardcoded demo login.",
+  "main": "auth.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1090.0",
+    "@aws-sdk/lib-dynamodb": "^3.1090.0",
+    "bcryptjs": "^3.0.3",
+    "jsonwebtoken": "^9.0.3"
+  }
+}
