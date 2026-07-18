@@ -107,14 +107,6 @@ Resources:
             Method: POST
             Auth:
               Authorizer: NONE
-        RegisterOptions:
-          Type: Api
-          Properties:
-            RestApiId: !Ref TodoApi
-            Path: /register
-            Method: OPTIONS
-            Auth:
-              Authorizer: NONE
 
   LoginFunction:
     Type: AWS::Serverless::Function
@@ -134,14 +126,6 @@ Resources:
             RestApiId: !Ref TodoApi
             Path: /login
             Method: POST
-            Auth:
-              Authorizer: NONE
-        LoginOptions:
-          Type: Api
-          Properties:
-            RestApiId: !Ref TodoApi
-            Path: /login
-            Method: OPTIONS
             Auth:
               Authorizer: NONE
 
@@ -168,14 +152,6 @@ Resources:
             RestApiId: !Ref TodoApi
             Path: /todos
             Method: POST
-        OptionsTodos:
-          Type: Api
-          Properties:
-            RestApiId: !Ref TodoApi
-            Path: /todos
-            Method: OPTIONS
-            Auth:
-              Authorizer: NONE
         GetTodo:
           Type: Api
           Properties:
@@ -194,14 +170,6 @@ Resources:
             RestApiId: !Ref TodoApi
             Path: /todos/{id}
             Method: DELETE
-        OptionsTodoId:
-          Type: Api
-          Properties:
-            RestApiId: !Ref TodoApi
-            Path: /todos/{id}
-            Method: OPTIONS
-            Auth:
-              Authorizer: NONE
 
 Outputs:
   ApiUrl:
